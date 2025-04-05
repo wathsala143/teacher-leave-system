@@ -1,0 +1,273 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Leave Management</title>
+  <script src="https://cdn.jsdelivr.net/npm/axios/dist/axios.min.js"></script>
+  <style>
+    body { 
+      font-family: Arial, sans-serif; 
+      max-width: 800px; 
+      margin: 0 auto; 
+      padding: 20px; 
+      line-height: 1.6;
+    }
+    .section {
+      margin-bottom: 30px;
+      border: 1px solid #ddd;
+      padding: 20px;
+      border-radius: 5px;
+      background: #f9f9f9;
+    }
+    input, button, select {
+      padding: 10px;
+      margin: 5px 0;
+      width: 100%;
+      box-sizing: border-box;
+    }
+    button {
+      background: #4CAF50;
+      color: white;
+      border: none;
+      cursor: pointer;
+    }
+    button:hover {
+      background: #45a049;
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-top: 20px;
+    }
+    th, td {
+      border: 1px solid #ddd;
+      padding: 12px;
+      text-align: left;
+    }
+    th {
+      background-color: #f2f2f2;
+    }
+    .hidden {
+      display: none;
+    }
+    .error {
+      color: red;
+      margin: 5px 0;
+    }
+    .success {
+      color: green;
+      margin: 5px 0;
+    }
+  </style>
+</head>
+<body>
+  <h1>Teacher Leave Management System</h1>
+
+  <!-- Login Section -->
+  <div id="loginSection" class="section">
+    <h2>Login</h2>
+    <form id="loginForm">
+      <input type="email" id="email" placeholder="Email" required>
+      <input type="password" id="password" placeholder="Password" required>
+      <button type="submit">Login</button>
+    </form>
+    <p>Don't have an account? <a href="#" id="showRegister">Register here</a></p>
+    <div id="loginMessage" class="error"></div>
+  </div>
+
+  <!-- Registration Section -->
+  <div id="registerSection" class="section hidden">
+    <h2>Register</h2>
+    <form id="registerForm">
+      <input type="text" id="name" placeholder="Full Name" required>
+      <input type="email" id="regEmail" placeholder="Email" required>
+      <input type="password" id="regPassword" placeholder="Password" required>
+      <select id="role">
+        <option value="teacher">Teacher</option>
+        <option value="admin">Admin</option>
+      </select>
+      <button type="submit">Register</button>
+    </form>
+    <p>Already have an account? <a href="#" id="showLogin">Login here</a></p>
+    <div id="registerMessage" class="error"></div>
+  </div>
+
+  <!-- Main Application Section -->
+  <div id="appSection" class="section hidden">
+    <div style="float:right;">
+      <button id="logoutBtn">Logout</button>
+    </div>
+    <h2>Welcome, <span id="userName"></span>!</h2>
+    
+    <!-- Leave Request Form -->
+    <h3>Request Leave</h3>
+    <form id="leaveForm">
+      <label>Start Date:</label>
+      <input type="date" id="startDate" required>
+      <label>End Date:</label>
+      <input type="date" id="endDate" required>
+      <label>Reason:</label>
+      <input type="text" id="reason" placeholder="Reason for leave" required>
+      <button type="submit">Submit Leave Request</button>
+    </form>
+    <div id="leaveMessage" class="error"></div>
+
+    <!-- Leaves Table -->
+    <h3>My Leave Requests</h3>
+    <table id="leaveTable">
+      <thead>
+        <tr>
+          <th>Start Date</th>
+          <th>End Date</th>
+          <th>Reason</th>
+          <th>Status</th>
+        </tr>
+      </thead>
+      <tbody id="leaveTableBody"></tbody>
+    </table>
+
+    <button id="downloadReport">Download Leave Report (PDF)</button>
+  </div>
+
+  <script>
+    // DOM Elements
+    const loginSection = document.getElementById('loginSection');
+    const registerSection = document.getElementById('registerSection');
+    const appSection = document.getElementById('appSection');
+    const loginForm = document.getElementById('loginForm');
+    const registerForm = document.getElementById('registerForm');
+    const leaveForm = document.getElementById('leaveForm');
+    const logoutBtn = document.getElementById('logoutBtn');
+    const showRegister = document.getElementById('showRegister');
+    const showLogin = document.getElementById('showLogin');
+    const downloadReport = document.getElementById('downloadReport');
+
+    // State
+    let currentUser = null;
+    const API_BASE_URL = 'http://localhost:8000';
+
+    // Event Listeners
+    showRegister.addEventListener('click', (e) => {
+      e.preventDefault();
+      loginSection.classList.add('hidden');
+      registerSection.classList.remove('hidden');
+    });
+
+    showLogin.addEventListener('click', (e) => {
+      e.preventDefault();
+      registerSection.classList.add('hidden');
+      loginSection.classList.remove('hidden');
+    });
+
+    loginForm.addEventListener('submit', handleLogin);
+    registerForm.addEventListener('submit', handleRegister);
+    leaveForm.addEventListener('submit', handleLeaveRequest);
+    logoutBtn.addEventListener('click', handleLogout);
+    downloadReport.addEventListener('click', handleDownloadReport);
+
+    // Functions
+    async function handleLogin(e) {
+      e.preventDefault();
+      const email = document.getElementById('email').value;
+      const password = document.getElementById('password').value;
+      
+      try {
+        const response = await axios.post(`${API_BASE_URL}/login`, { email, password });
+        currentUser = response.data;
+        
+        // Update UI
+        document.getElementById('userName').textContent = currentUser.name;
+        loginSection.classList.add('hidden');
+        appSection.classList.remove('hidden');
+        
+        // Load user's leaves
+        await loadLeaves();
+        
+      } catch (error) {
+        showMessage('loginMessage', 'Invalid credentials', 'error');
+      }
+    }
+
+    async function handleRegister(e) {
+      e.preventDefault();
+      const name = document.getElementById('name').value;
+      const email = document.getElementById('regEmail').value;
+      const password = document.getElementById('regPassword').value;
+      const role = document.getElementById('role').value;
+      
+      try {
+        await axios.post(`${API_BASE_URL}/register`, { name, email, password, role });
+        showMessage('registerMessage', 'Registration successful! Please login.', 'success');
+        registerForm.reset();
+      } catch (error) {
+        showMessage('registerMessage', error.response?.data?.error || 'Registration failed', 'error');
+      }
+    }
+
+    async function handleLeaveRequest(e) {
+      e.preventDefault();
+      const startDate = document.getElementById('startDate').value;
+      const endDate = document.getElementById('endDate').value;
+      const reason = document.getElementById('reason').value;
+      
+      try {
+        await axios.post(`${API_BASE_URL}/leave`, {
+          startDate,
+          endDate,
+          reason
+        }, {
+          headers: { Authorization: `Bearer ${currentUser.token}` }
+        });
+        
+        showMessage('leaveMessage', 'Leave request submitted successfully!', 'success');
+        leaveForm.reset();
+        await loadLeaves();
+      } catch (error) {
+        showMessage('leaveMessage', error.response?.data?.error || 'Failed to submit leave request', 'error');
+      }
+    }
+
+    function handleLogout() {
+      currentUser = null;
+      appSection.classList.add('hidden');
+      loginSection.classList.remove('hidden');
+      document.getElementById('loginForm').reset();
+    }
+
+    function handleDownloadReport() {
+      window.open(`${API_BASE_URL}/leave-report/${currentUser._id}`);
+    }
+
+    async function loadLeaves() {
+      try {
+        const response = await axios.get(`${API_BASE_URL}/leave`, {
+          headers: { Authorization: `Bearer ${currentUser.token}` }
+        });
+        
+        const tbody = document.getElementById('leaveTableBody');
+        tbody.innerHTML = response.data.map(leave => `
+          <tr>
+            <td>${formatDate(leave.startDate)}</td>
+            <td>${formatDate(leave.endDate)}</td>
+            <td>${leave.reason}</td>
+            <td>${leave.status}</td>
+          </tr>
+        `).join('');
+      } catch (error) {
+        showMessage('leaveMessage', 'Error loading leave requests', 'error');
+      }
+    }
+
+    // Helper Functions
+    function formatDate(dateString) {
+      const options = { year: 'numeric', month: 'short', day: 'numeric' };
+      return new Date(dateString).toLocaleDateString(undefined, options);
+    }
+
+    function showMessage(elementId, message, type) {
+      const element = document.getElementById(elementId);
+      element.textContent = message;
+      element.className = type;
+    }
+  </script>
+</body>
+</html>
